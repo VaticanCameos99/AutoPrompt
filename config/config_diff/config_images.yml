@@ -9,9 +9,9 @@ predictor:
     method : 't2i'
     config:
         t2i:
-            type: 'stability'
-            name: 'core' #'stable-diffusion-xl-1024-v1-0'
-            "image_size": [1024,1024]
+            type: 'OpenAI'
+            name: 'dall-e-3' #'stable-diffusion-xl-1024-v1-0'
+            "image_size": "1024x1024"
             "quality": "standard"
             "output_path": ''
         mode: 'prediction'
@@ -20,12 +20,12 @@ meta_prompts:
     folder: 'prompts/meta_prompts_image_generation'
 
 eval:
-    function_name: 't2i_vlm_score'
+    function_name: 'dsg_score'
     llm:
         type: 'OpenAI'
         name: 'gpt-4o'
     num_workers: 1
-    source_image_folder: '/Users/eladl/Downloads/test3'
+    source_image_folder: '/Users/nirvivakharia/Documents/CVPRPaper2024/sourceImageFolder'
     num_large_errors: 4
     error_threshold: 5
 llm:

@@ -52,6 +52,8 @@ class Eval:
                                                  num_workers=self.num_workers)
         elif self.score_function_name == 't2i_vlm_score':
             return utils.get_t2i_vlm_score_func(self.config)
+        elif self.score_function_name == 'dsg_score':
+            return utils.dsg_score_func(self.config)
         else:
             raise NotImplementedError("Eval function not implemented")
 

@@ -1,5 +1,6 @@
 from estimator.estimator_llm import LLMEstimator
 from eval.eval_im import ImageEvaluator
+from eval.eval_dsg import DSG
 def set_function_from_iterrow(func):
     def wrapper(dataset):
         dataset['score'] = dataset.apply(func, axis=1)
@@ -54,13 +55,22 @@ def set_multiscore_function(scores_dic, num_workers=1):
 
 
 def get_t2i_vlm_score_func(params):
-    evaluator = ImageEvaluator(params)
-    evaluator.mode = 'score'
+    evaluator = DSG(params)
+    # evaluator.mode = 'score'
     num_workers = params.num_workers
     def wrapper(dataset):
-        res = evaluator.dataset_invoke(dataset, num_workers)
+        res = evaluator.dataset_invoke(dataset)
         for row in res:
             dataset.loc[row['index'], 'score'] = row['result']['score']
             dataset.loc[row['index'], 'score_reasoning'] = row['result']['reason']
         return dataset
+    return wrapper
+
+def dsg_score_func(params):
+    evaluator = DSG(params)
+    evaluator.mode = 'score'
+    # num_workers = params.num_workers
+    def wrapper(dataset):
+        return evaluator.dataset_invoke(dataset)
+    
     return wrapper

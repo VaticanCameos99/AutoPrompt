@@ -33,11 +33,9 @@ class DSG:
         self.config = config
         self.source_images = config.source_image_folder
         self.results = {}
-        # self.vqa_model = MPLUG()
         self.get_source_image_questions()
 
     def get_source_image_questions(self):
-        # message_content = [{"type": "text", "text": "You are given images of a specific character or an object, we refer these images as the 'source images' and the object as <x>"}]
         for i, filename in enumerate(os.listdir(self.source_images)):
             file_path = os.path.join(self.source_images, filename)
             message_content = [{"type": "text", "text": "You are given images of a specific character or an object, we refer these images as the 'source images' and the object as <x>. Identify elements that are in the foreground and then generate yes/no type questions to check if these elements are in the image.\
@@ -70,18 +68,12 @@ class DSG:
             3. 1
               Questions: {}""".format(str(questions))},
             {"type": "image_url", "image_url": {"url": url}}]
-        #Temporary, will change to system and human message later
         return ChatPromptTemplate.from_messages([HumanMessage(content=message_content)])
         
-        #where is the image url?
-
     def generate_dsg(self, prompts):
-        # selresults = {}
         #Save with index
         inputs = prompts.set_index('id')['text'].apply(lambda x: {'input': x}).to_dict()
-
         #calls to llm are concurrent
-        time.sleep(4)
         id2tuple_outputs, id2question_outputs, id2dependency_outputs = generate_dsg(
             inputs,
             generate_fn=self.llm.invoke, 
@@ -94,40 +86,25 @@ class DSG:
             self.results[key]['question'] = parse_question_output(id2question_outputs[key]['output'])
             self.results[key]['dependency'] = parse_dependency_output(id2dependency_outputs[key]['output'])
 
-        # save as self.results
-        #Shouldn't results be created at run time? "isn't prompt in config?"
-        # self.results = results
-        # create prompts based on these results
-        # prompt is created when you invoke the chain, so add it when you call
-
-        # create call to vqa, that adds score to dataset
-        # return results
-
     def dataset_invoke(self, datasets):
         #compare image, question and dependency for globals
-
-        #Datasets structure if there are multiple images. Do we only save the last state? 
-        # datasets_copy = datasets.copy()
-        # print('datasets:\n', datasets.columns)
         prompts = datasets[['id', 'text']]
-        self.generate_dsg(prompts)
-        # print('results', self.results)
+        def has_question_empty_or_missing(row):
+            my_dict_entry = self.results.get(row['id'], {})
+            return 'question' not in my_dict_entry
+        filtered_prompts = prompts[prompts.apply(has_question_empty_or_missing, axis=1)]
+        if (not filtered_prompts.empty):
+            self.generate_dsg(filtered_prompts)
         self.create_qna_prompts(datasets)
-        # self.get_score(datasets) 
         datasets['score'] = datasets['id'].map(self.results.get).apply(lambda x: x['score'] if x else None)
-        # self.results = {}
-        print(self.results, 'self.results')
-        print(datasets, 'datasets')
         return datasets
         
     def get_score(self, datasets):
-        # output_list = []
         for key in self.results.keys():
             answer = self.results[key]['answers']
             vaidity_count = self.results[key]['vaidity_count']
 
             self.results[key]['score'] = sum(answer) / vaidity_count
-            # output_list.append({'key': key, 'score':  sum(answer) / vaidity_count})
         return           
     
     def create_qna_prompts(self, dataset: pd.DataFrame):
@@ -135,23 +112,17 @@ class DSG:
          batch_inputs = []
          batch_inputs_src_questions = []
          for key in self.results.keys():
-            src_questions = self.results[key]['source_questions']
+            src_questions = self.results[key]['source_questions'] #Format: ["Q1", "Q2", ...]
             questions = self.results[key]['question'] #Format: 1: "Q1", 2: "Q2" .. 
-            # questions.extend(src_questions) #Best to separate this and append to answers later
             row = dataset[dataset['id'] == key]
             batch_inputs.append({'sample_chain_input': '', 'index': key,
                                  'chain': DSGWrapper(self.generate_qna_prompt(questions, row['prediction'].values[0]) | self.llm)})
             batch_inputs_src_questions.append({'sample_chain_input': '', 'index': key,
                                  'chain': DSGWrapper(self.generate_qna_prompt(src_questions, row['prediction'].values[0]) | self.llm)})
-            
-
-                #  answer = self.vqa_model.vqa(generated_image, question)
 
          answers = sync_chain_batch_run(None, batch_inputs, self.config.num_workers, get_index=True)
          time.sleep(4)
-         src_answers = sync_chain_batch_run(None, batch_inputs, self.config.num_workers, get_index=True)
-         print('all res', answers)
-        #  parse result, put in index-array format
+         src_answers = sync_chain_batch_run(None, batch_inputs_src_questions, self.config.num_workers, get_index=True)
          for d in answers:
             index = d['index']
             result_string = d['result']
@@ -159,10 +130,6 @@ class DSG:
             self.results[index]['answers'] = result_list
 
          #Disqualify invaid questions and answers
-         #TODO: after correcting validity, consider parallelising this
-         #Total possible points: valid questions + src questions
-         #total score = sum(answers) = sum(src_answers)
-         #next, scale total score to out of 100
          for key in self.results.keys():
             dependencies = self.results[key]['dependency']
             answers = self.results[key]['answers']
@@ -176,49 +143,23 @@ class DSG:
                         any_parent_answered_no = True
                         break
                 if any_parent_answered_no:
-                    print(answers, 'answers')
-                    print(id, 'id')
                     answers[id] = 0
-                    #TODO: consider nulling out answers instead of saving validity
                     total_possible_score -=1
 
             self.results[key]['answers'] = answers
             assert len(self.results[key]['answers']) == len(self.results[key]['question']), str(len(self.results[key]['answers'])) + " & " + str(len(self.results[key]['question']))
-            # print('sum validty', sum(validity))
-            # print('len source questions', len(self.results[key]['source_questions']))
             self.results[key]['score'] = sum(answers)
             self.results[key]['total_possible_score'] = total_possible_score
-            # print(self.results, 'self results after validity')
-            # paes
+
+        #Processing answers to source questions
          for d in src_answers:
             index = d['index']
             result_string = d['result']
             result_list = [int(line.split('. ')[1]) for line in result_string.split('\n') if line]
-            # self.results[index]['answers'].extend(result_list)
             self.results[key]['score'] += sum(result_list)
-            #todo: add scaling for each id and save as score
             self.results[key]['total_possible_score'] += len(result_list)
 
             scaled_error = 10 - (self.results[key]['score'] / self.results[key]['total_possible_score']) * 10
             self.results[key]['score'] = scaled_error
             del self.results[key]['total_possible_score']
-
-
-         print(self.results, 'self results')
          return
-
-
-        
-if __name__ == "__main__":
-    config_params = override_config("/Users/nirvivakharia/Documents/CVPRPaper2024/AutoPrompt/config/config_diff/config_images.yml")
-    # print(config_params.eval)
-    config_params.eval['task_description'] = """A raccoon wearing formal clothes, wearing a tophat
-and holding a cane. The raccoon is holding a garbage
-bag. Oil painting in the style of Vincent Van Gogh""".strip()
-    dsg = DSG(config_params.eval)
-    print('gemini', dsg.llm)
-    # print(dsg.llm.invoke("Introduce yourself").content)
-    print('dsg op', dsg.generate_dsg([config_params.eval['task_description']], verbose = False))
-
-    #promptsi+1 in dataset
-    #

@@ -27,7 +27,7 @@ eval:
     num_workers: 1
     source_image_folder: '/Users/nirvivakharia/Documents/CVPRPaper2024/sourceImageFolder'
     num_large_errors: 4
-    error_threshold: 5
+    error_threshold: 9
 llm:
     type: 'OpenAI'
     name: 'gpt-4o'

@@ -105,6 +105,13 @@ class Eval:
             for index, row in error_df.iterrows():
                 txt_res += f"###Sample {index} score: {row['score']}\n###Sample {index} evaluator feedback:\n{row['score_reasoning']}\n#########\n"
             return txt_res
+        if self.score_function_name == 'dsg_score':
+            error_df = error_df[:num_large_errors_per_label]
+            text_res = ''
+            for index, row in error_df.iterrows():
+                text_res += f"###Sample {index} score: {row['score']}\n###Sample {index} evaluator feedback:\n{row['score_reasoning']}\n#########\n"
+            return text_res
+            
 
 
         required_columns = ['annotation', 'text', 'score', 'prediction']
